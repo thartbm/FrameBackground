@@ -1,6 +1,114 @@
 {
     "expno": 1,
-    "expstart": 1645110694.0359414,
+    "expstart": 1645202319.608036,
     "ID": 1,
-    "datadir": "data/exp_1/p001/"
+    "datadir": "data/exp_1/p001/",
+    "gammaGrid": [
+        0.0,
+        136.42685,
+        1.7472667,
+        NaN,
+        NaN,
+        NaN,
+        0.0,
+        26.57937,
+        1.7472667,
+        NaN,
+        NaN,
+        NaN,
+        0.0,
+        100.41914,
+        1.7472667,
+        NaN,
+        NaN,
+        NaN,
+        0.0,
+        9.118731,
+        1.7472667,
+        NaN,
+        NaN,
+        NaN
+    ],
+    "waitBlanking": true,
+    "resolution": [
+        1920,
+        1080
+    ],
+    "relResolution": [
+        1.7777777777777777,
+        1.0
+    ],
+    "conditions": [
+        {
+            "period": 0.5,
+            "amplitude": 0.55,
+            "motion": "dotframe"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.55,
+            "motion": "dotframe"
+        },
+        {
+            "period": 0.9,
+            "amplitude": 0.55,
+            "motion": "dotframe"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.35,
+            "motion": "dotframe"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.75,
+            "motion": "dotframe"
+        },
+        {
+            "period": 0.5,
+            "amplitude": 0.55,
+            "motion": "dotbackground"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.55,
+            "motion": "dotbackground"
+        },
+        {
+            "period": 0.9,
+            "amplitude": 0.55,
+            "motion": "dotbackground"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.35,
+            "motion": "dotbackground"
+        },
+        {
+            "period": 0.7,
+            "amplitude": 0.75,
+            "motion": "dotbackground"
+        }
+    ],
+    "maxamplitude": 0.75,
+    "blocks": [
+        {
+            "trialtypes": [
+                0,
+                1,
+                9,
+                8,
+                7,
+                2,
+                4,
+                5,
+                6,
+                3
+            ],
+            "instruction": "do the trials?"
+        }
+    ],
+    "currentblock": 1,
+    "currenttrial": 0,
+    "expfinish": 1645202327.3500786
 }

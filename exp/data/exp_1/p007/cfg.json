@@ -1,8 +1,8 @@
 {
     "expno": 1,
-    "expstart": 1645241986.990027,
-    "ID": 1,
-    "datadir": "data/exp_1/p001/",
+    "expstart": 1645242371.2814908,
+    "ID": 7,
+    "datadir": "data/exp_1/p007/",
     "gammaGrid": [
         0.0,
         1.0,
@@ -94,21 +94,21 @@
     "blocks": [
         {
             "trialtypes": [
-                0,
-                1,
-                6,
-                2,
-                4,
                 7,
-                9,
-                3,
+                2,
                 8,
-                5
+                5,
+                6,
+                4,
+                1,
+                9,
+                0,
+                3
             ],
             "instruction": "do the trials?"
         }
     ],
     "currentblock": 1,
     "currenttrial": 0,
-    "expfinish": 1645242000.319617
+    "expfinish": 1645242384.355972
 }

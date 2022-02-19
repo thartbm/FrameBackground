@@ -7,7 +7,7 @@ from psychopy import visual, core, event, monitors
 # 0.015 dot size
 
 
-def run_exp(expno=1):
+def run_exp(expno=1, setup='laptop'):
 
     cfg = {}
     cfg['expno'] = expno
@@ -17,7 +17,7 @@ def run_exp(expno=1):
     cfg = getParticipant(cfg)
 
     # set up monitor and visual objects:
-    cfg = getStimuli(cfg)
+    cfg = getStimuli(cfg, setup=setup)
 
     # set up blocks and trials/tasks within them:
     cfg = getTasks(cfg)
@@ -39,12 +39,94 @@ def doDotTrial(cfg):
     trialtype = cfg['blocks'][cfg['currentblock']]['trialtypes'][cfg['currenttrial']]
     trialdict = cfg['conditions'][trialtype]
 
-    dotfield = cfg['hw']['dotfield']
-
     # DO THE TRIAL HERE
-    trialstarttime = time.time()
+    trial_start_time = time.time()
 
-    
+    # straight up copies from the PsychoJS version:
+    frequency = 1/trialdict['period']
+    distance = trialdict['amplitude']
+
+    # change frequency and distance for static periods at the extremes:
+    frequency = frequency + (4/30)
+    distance = distance + (distance/((frequency/2)*15))
+    p = frequency
+    d = distance
+    # d = distance / 2 ?
+
+    previous_frame_time = 0
+    # # # # # # # # # #
+    # WHILE NO RESPONSE
+
+    while (time.time() - trial_start_time) < 3:
+
+        # on every frame:
+        this_frame_time = time.time() - trial_start_time
+        frame_time_elapsed = this_frame_time - previous_frame_time
+        print(frame_time_elapsed)
+
+        # shorter variable for equations:
+        t = this_frame_time
+        #print(t)
+
+        # move the frame:
+        offsetX = (abs((t % p) - (p/2)) / (p/2)) - 0.5
+        offsetX = offsetX * d * 10
+
+        flash_red  = False
+        flash_blue = False
+
+        if ( ((t + (1/30)) % p) < (2/30)):
+            flash_red = True
+            if (abs(offsetX) > (d/2)):
+                offsetX = np.sign(offsetX) * (d/2)
+
+        if ( ((t + (1/30) + (p/2)) % p) < (2/30) ):
+            flash_blue = True
+            if (abs(offsetX) > (d/2)):
+                offsetX = np.sign(offsetX) * (d/2)
+
+        # cfg['hw']['dotfield'] is a dict with 4 entries:
+        # - 'dotsarray': am ElementArrayStim with N Rect objects
+        # - 'maxdotlife': a float
+        # - 'dotlifetimes': a list of N floats
+        # - 'dotpos': a Nx2 array with x,y coordinates
+
+        cfg['hw']['dotfield']['dotlifetimes'] += frame_time_elapsed
+        idx = np.nonzero(cfg['hw']['dotfield']['dotlifetimes'] > cfg['hw']['dotfield']['maxdotlife'])[0]
+        #print(idx)
+        cfg['hw']['dotfield']['dotlifetimes'][idx] -= cfg['hw']['dotfield']['maxdotlife']
+        cfg['hw']['dotfield']['xys'][idx,0] = np.random.random(size=len(idx))
+
+        xys = copy.deepcopy(cfg['hw']['dotfield']['xys'])
+        xys = xys * 10
+        xys[:,0] += offsetX
+        cfg['hw']['dotfield']['dotsarray'].setXYs(xys)
+        cfg['hw']['dotfield']['dotsarray'].draw()
+
+
+
+        cfg['hw']['win'].flip()
+
+        previous_frame_time = this_frame_time
+
+    #for (var idx=0; idx < ndots; idx++) {
+    #    dots_lifetime[idx] = (dots_lifetime[idx] + frame_time_elapsed)
+    #    if (dots_lifetime[idx] > max_lifetime) {
+    #        dots_lifetime[idx] = dots_lifetime[idx] - max_lifetime
+    #        dots_pos[idx][0] = randomX(wrap_margins)
+    #    }
+    #    // dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
+    #    // wrap around margins:
+    #    if ( (dots_coords[idx][0] + offsetX) < margins[0]) {
+    #        // left of left margin, increase by area width, right?
+    #        dots[idx].setPos([dots_coords[idx][0]+offsetX+margin_diff,Ypos[idx]], false);
+    #    } else if ( (dots_coords[idx][0] + offsetX) > margins[1] ) {
+    #        // right of right margin, decrease by area width, right?
+    #        dots[idx].setPos([dots_coords[idx][0]+offsetX-margin_diff,Ypos[idx]], false);
+    #    } else {
+    #        dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
+    #    }
+    #}
 
     return(cfg)
 
@@ -77,21 +159,36 @@ def runTasks(cfg):
 
     return(cfg)
 
-def getStimuli(cfg):
+def getStimuli(cfg, setup='tablet'):
 
+    gammaGrid = np.array([[0., 1., 1., np.nan, np.nan, np.nan],
+                          [0., 1., 1., np.nan, np.nan, np.nan],
+                          [0., 1., 1., np.nan, np.nan, np.nan],
+                          [0., 1., 1., np.nan, np.nan, np.nan]], dtype=float)
     # for vertical tablet setup:
-    gammaGrid = np.array([[0., 136.42685, 1.7472667, np.nan, np.nan, np.nan],
-                          [0.,  26.57937, 1.7472667, np.nan, np.nan, np.nan],
-                          [0., 100.41914, 1.7472667, np.nan, np.nan, np.nan],
-                          [0.,  9.118731, 1.7472667, np.nan, np.nan, np.nan]], dtype=float)
+    if setup == 'tablet':
+        gammaGrid = np.array([[0., 136.42685, 1.7472667, np.nan, np.nan, np.nan],
+                              [0.,  26.57937, 1.7472667, np.nan, np.nan, np.nan],
+                              [0., 100.41914, 1.7472667, np.nan, np.nan, np.nan],
+                              [0.,  9.118731, 1.7472667, np.nan, np.nan, np.nan]], dtype=float)
+        waitBlanking = True
+        resolution = [1680, 1050]
+        size = [47.4, 29.6]
+        distance = 47
+
+    if setup == 'laptop':
     # for my laptop:
-    waitBlanking = True
-    resolution   = [1920, 1080]
+        waitBlanking = True
+        resolution   = [1920, 1080]
+        size = [34.5, 19.5]
+        distance = 40
 
 
-
-    mymonitor = monitors.Monitor(name='temp')
+    mymonitor = monitors.Monitor(name='temp',
+                                 distance=distance,
+                                 width=size[0])
     mymonitor.setGammaGrid(gammaGrid)
+    mymonitor.setSizePix(resolution)
 
     cfg['gammaGrid']    = list(gammaGrid.reshape([np.size(gammaGrid)]))
     cfg['waitBlanking'] = waitBlanking
@@ -102,7 +199,7 @@ def getStimuli(cfg):
     # first set up the window and monitor:
     cfg['hw']['win'] = visual.Window( fullscr=True,
                                       size=resolution,
-                                      units='height',
+                                      units='deg',
                                       waitBlanking=waitBlanking,
                                       color=[0,0,0],
                                       monitor=mymonitor)
@@ -111,45 +208,57 @@ def getStimuli(cfg):
     cfg['relResolution'] = [x / res[1] for x in res]
 
     cfg['hw']['bluedot'] = visual.Circle(win=cfg['hw']['win'],
-                                         size=[.05,.05],
+                                         units='deg',
+                                         size=[.5,.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[-1,-1,1],
                                          pos=[0,0.20])
     cfg['hw']['reddot'] = visual.Circle(win=cfg['hw']['win'],
-                                         size=[.05,.05],
+                                         units='deg',
+                                         size=[.5,.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[1,-1,-1],
                                          pos=[0,-0.20])
 
-    dotfield = []
-    dotpositions = np.linspace(0,1,1001)
-    fillcolors = [[-.5,-.5,-.5],[.5,.5,.5]]
-    color_idx = 0
-    for dotpos in dotpositions:
-        dot = {}
-        color_idx = [1,0][color_idx]
-        dot['life'] = random.random()
-        dot['pos_y'] = dotpos
-        dot['dot']  = visual.Rect(win=cfg['hw']['win'],
-                                  width=0.015, height=0.015,
-                                  lineWidth=0,
-                                  fillColor=fillcolors[color_idx],
-                                  pos=[dotpos,random.random()])
-        dotfield += [dot]
+
+    ndots = 1000
+    maxdotlife = 1/6
+    xys = [[random.random()-0.5,y] for y in np.linspace(-0.5,0.5,ndots)]
+    colors = [[-.5,-.5,-.5],[.5,.5,.5]] * 500
+    dotlifetimes = [random.random() * maxdotlife for x in range(ndots)]
+    dotMask = np.ones([2,2])
+
+    dotsarray = visual.ElementArrayStim(win = cfg['hw']['win'],
+                                        units='deg',
+                                        fieldPos=(0,0),
+                                        nElements=ndots,
+                                        sizes=0.25,
+                                        colors=colors,
+                                        xys=xys,
+                                        elementMask=dotMask
+                                        )
+
+    dotfield = {}
+    dotfield['maxdotlife']   = maxdotlife
+    dotfield['dotlifetimes'] = np.array(dotlifetimes)
+    dotfield['dotsarray']    = dotsarray
+    dotfield['xys']          = np.array(xys)
 
     cfg['hw']['dotfield'] = dotfield
 
 
     cfg['hw']['bluedot_ref'] = visual.Circle(win=cfg['hw']['win'],
-                                         size=[.05,.05],
+                                         units='deg',
+                                         size=[.5,.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[-1,-1,1],
                                          pos=[0,0.20])
     cfg['hw']['reddot_ref'] = visual.Circle(win=cfg['hw']['win'],
-                                         size=[.05,.05],
+                                         units='deg',
+                                         size=[.5,.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[1,-1,-1],

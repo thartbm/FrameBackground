@@ -1,0 +1,66 @@
+// before trial onset:
+
+frequency = 1;
+distance = 0.20;
+
+// add 4 frames at 30 Hz to the period:
+frequency = frequency + (4/30);
+
+// distance should be increased by what is traveled in 2 frames:
+distance = distance + (distance/((frequency/2)*15));
+
+
+
+
+this_frame_time = globalClock.getTime() - trial_start_time;
+frame_time_elapsed = this_frame_time - previous_frame_time;
+//if (this_frame_time < 0.500) {
+//    console.log('frame_time_elapsed: '+frame_time_elapsed);
+//    console.log('dots_lifetime[0]: '+dots_lifetime[0]);
+//}
+
+t = this_frame_time;
+p = frequency;
+
+// move frame:
+offsetX = (abs((t % p) - (p/2)) / (p/2)) - 0.5;
+offsetX = offsetX * distance;
+
+flash_red  = false;
+flash_blue = false;
+
+// below, '0.20' should be replaced with a variable (combi[1] in original)
+if ( ((t + (1/30)) % p) < (2/30) ) {
+    flash_red = true;
+    if (abs(offsetX) > (0.20/2)) {
+        offsetX = Math.sign(offsetX) * (0.20/2);
+    }
+}
+
+// below, '0.20' should be replaced with a variable (combi[1] in original)
+if ( ((t + (1/30) + (p/2)) % p) < (2/30) ) {
+    flash_blue = true;
+    if (abs(offsetX) > (0.20/2)) {
+        offsetX = Math.sign(offsetX) * (0.20/2);
+    }
+}
+
+// apply the offset to dots:
+for (var idx=0; idx < ndots; idx++) {
+    dots_lifetime[idx] = (dots_lifetime[idx] + frame_time_elapsed);
+    if (dots_lifetime[idx] > max_lifetime) {
+        dots_lifetime[idx] = dots_lifetime[idx] - max_lifetime;
+        dots_pos[idx][0] = randomX(wrap_margins);
+    }
+    // dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
+    // wrap around margins:
+    if ( (dots_coords[idx][0] + offsetX) < margins[0]) {
+        // left of left margin, increase by area width, right?
+        dots[idx].setPos([dots_coords[idx][0]+offsetX+margin_diff,Ypos[idx]], false);
+    } else if ( (dots_coords[idx][0] + offsetX) > margins[1] ) {
+        // right of right margin, decrease by area width, right?
+        dots[idx].setPos([dots_coords[idx][0]+offsetX-margin_diff,Ypos[idx]], false);
+    } else {
+        dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
+    }
+}

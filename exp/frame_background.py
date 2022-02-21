@@ -1,7 +1,7 @@
 import time, os, random, sys, json, copy
 import numpy as np
 import pandas as pd
-from psychopy import visual, core, event, monitors
+from psychopy import visual, core, event, monitors, tools
 
 # 600 dots
 # 0.16667 dot life time
@@ -65,7 +65,25 @@ def doDotTrial(cfg):
     blue_on     = []
     red_on      = []
 
-    while (time.time() - trial_start_time) < 2.0:
+    # we show a blank screen for 1/3 - 2.3 of a second (uniform dist):
+    blank = 1/3 + (random.random() * 1/3)
+
+    # the frame motion gets multiplied by -1 or 1:
+    xfactor = [-1,1][random.randint(0,1)]
+
+    # the mouse response has a random offset between -3 and 3 degrees
+    mouse_offset = (random.random() - 0.5) * 6
+
+    waiting_for_response = True
+
+    while waiting_for_response:
+
+        while (time.time() - trial_start_time) < blank:
+            event.clearEvents(eventType='mouse')
+            event.clearEvents(eventType='keyboard')
+            cfg['hw']['win'].flip()
+
+
 
         # on every frame:
         this_frame_time = time.time() - trial_start_time
@@ -95,6 +113,8 @@ def doDotTrial(cfg):
             if (abs(offsetX) > (distance/2)):
                 offsetX = np.sign(offsetX) * (distance/2)
 
+        offsetX = offsetX * xfactor
+
 #        minOffset = min(minOffset, offsetX)
 #        maxOffset = max(maxOffset, offsetX)
         # cfg['hw']['dotfield'] is a dict with 4 entries:
@@ -102,26 +122,37 @@ def doDotTrial(cfg):
         # - 'maxdotlife': a float
         # - 'dotlifetimes': a list of N floats
         # - 'dotpos': a Nx2 array with x,y coordinates
+        if trialdict['stimtype'] in ['dotframe','dotbackground']:
 
-        cfg['hw']['dotfield']['dotlifetimes'] += frame_time_elapsed
-        idx = np.nonzero(cfg['hw']['dotfield']['dotlifetimes'] > cfg['hw']['dotfield']['maxdotlife'])[0]
-        #print(idx)
-        cfg['hw']['dotfield']['dotlifetimes'][idx] -= cfg['hw']['dotfield']['maxdotlife']
-        cfg['hw']['dotfield']['xys'][idx,0] = np.random.random(size=len(idx)) - 0.5
+            cfg['hw']['dotfield']['dotlifetimes'] += frame_time_elapsed
+            idx = np.nonzero(cfg['hw']['dotfield']['dotlifetimes'] > cfg['hw']['dotfield']['maxdotlife'])[0]
+            #print(idx)
+            cfg['hw']['dotfield']['dotlifetimes'][idx] -= cfg['hw']['dotfield']['maxdotlife']
+            cfg['hw']['dotfield']['xys'][idx,0] = np.random.random(size=len(idx)) - 0.5
 
-        xys = copy.deepcopy(cfg['hw']['dotfield']['xys'])
-        xys[:,0] = xys[:,0] * (15 + cfg['maxamplitude'])
-        xys[:,1] = xys[:,1] * 15
+            xys = copy.deepcopy(cfg['hw']['dotfield']['xys'])
+            xys[:,0] = xys[:,0] * (24 + cfg['maxamplitude'] - cfg['hw']['dotfield']['dotsize'])
+            xys[:,1] = xys[:,1] * (15 - cfg['hw']['dotfield']['dotsize'])
 
-        opacities[:] = 1
-        if (trialdict['stimtype'] == 'dotframe'):
-            opacities[np.nonzero(abs(xys[:,0]) > 7.5)[0]] = 0
-        xys[:,0] += offsetX
-        if (trialdict['stimtype'] == 'dotbackground'):
-            opacities[np.nonzero(abs(xys[:,0]) > 7.5)[0]] = 0
-        cfg['hw']['dotfield']['dotsarray'].setXYs(xys)
-        cfg['hw']['dotfield']['dotsarray'].opacities = opacities
-        cfg['hw']['dotfield']['dotsarray'].draw()
+            opacities[:] = 1
+            if (trialdict['stimtype'] == 'dotframe'):
+                opacities[np.nonzero(abs(xys[:,0]) > (12 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
+            xys[:,0] += offsetX
+            if (trialdict['stimtype'] == 'dotbackground'):
+                opacities[np.nonzero(abs(xys[:,0]) > (12 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
+            xys[:,0] = xys[:,0] - cfg['stim_offsets'][0]
+            xys[:,1] = xys[:,1] - cfg['stim_offsets'][1]
+            cfg['hw']['dotfield']['dotsarray'].setXYs(xys)
+            cfg['hw']['dotfield']['dotsarray'].opacities = opacities
+            cfg['hw']['dotfield']['dotsarray'].draw()
+
+        if trialdict['stimtype'] in ['classicframe']:
+            frame_pos = [offsetX-cfg['stim_offsets'][0], -cfg['stim_offsets'][1]]
+            cfg['hw']['white_frame'].pos = frame_pos
+            cfg['hw']['white_frame'].draw()
+            cfg['hw']['gray_frame'].pos = frame_pos
+            cfg['hw']['gray_frame'].draw()
+
 
         if flash_red:
             cfg['hw']['reddot'].draw()
@@ -137,6 +168,20 @@ def doDotTrial(cfg):
         frame_pos   += [offsetX]
         blue_on     += [flash_blue]
         red_on      += [flash_red]
+
+        # in DEGREES:
+        mousepos = cfg['hw']['mouse'].getPos()
+        percept = (mousepos[0] + mouse_offset) / 4
+
+        # blue is on top:
+        cfg['hw']['bluedot_ref'].pos = [percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+10]
+        cfg['hw']['reddot_ref'].pos = [-percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+6]
+        cfg['hw']['bluedot_ref'].draw()
+        cfg['hw']['reddot_ref'].draw()
+
+        keys = event.getKeys(keyList=['space'])
+        if len(keys):
+            waiting_for_response = False
 
     # save a data frame as csv?
     #stimulus_data = pd.DataFrame({'time':frame_times,
@@ -192,9 +237,9 @@ def runTasks(cfg):
 
                 cfg = doDotTrial(cfg)
 
-            #if trialdict['stimtype'] in ['classicframe']:
-            #
-            #    cfg = doFrameTrial(cfg)
+            if trialdict['stimtype'] in ['classicframe']:
+
+                cfg = doDotTrial(cfg)
 
             cfg['currenttrial'] += 1
 
@@ -251,31 +296,34 @@ def getStimuli(cfg, setup='tablet'):
     res = cfg['hw']['win'].size
     cfg['relResolution'] = [x / res[1] for x in res]
 
+    cfg['stim_offsets'] = [6,2]
+
     cfg['hw']['bluedot'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
                                          size=[1.5,1.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[-1,-1,1],
-                                         pos=[0,6])
+                                         pos=[0-cfg['stim_offsets'][0],6-cfg['stim_offsets'][1]])
     cfg['hw']['reddot'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
                                          size=[1.5,1.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[1,-1,-1],
-                                         pos=[0,-6])
+                                         pos=[0-cfg['stim_offsets'][0],-6-cfg['stim_offsets'][1]])
 
 
-    ndots = 1000
-    maxdotlife = 1/10
+    ndots = 600
+    maxdotlife = 1/5
     ypos = np.linspace(-0.5,0.5,ndots)
     random.shuffle(ypos)
     xys = [[random.random()-0.5,y] for y in ypos]
-    colors = [[-.3,-.3,-.3],[.3,.3,.3]] * 500
+    #colors = [[-.25,-.25,-.25],[.25,.25,.25]] * 400
+    colors = [[-.3,-.3,-.3],[.3,.3,.3]] * 300
     dotlifetimes = [random.random() * maxdotlife for x in range(ndots)]
     dotMask = np.ones([32,32])
-    dotsize = 0.5
+    dotsize = 1
 
     dotsarray = visual.ElementArrayStim(win = cfg['hw']['win'],
                                         units='deg',
@@ -297,17 +345,41 @@ def getStimuli(cfg, setup='tablet'):
 
     cfg['hw']['dotfield'] = dotfield
 
+    print(tools.monitorunittools.deg2pix(0.75, monitor=mymonitor))
+    #cfg['hw']['frame'] = visual.Rect(win=cfg['hw']['win'],
+    #                                 width=24,
+    #                                 height=15,
+    #                                 units='deg',
+    #                                 lineWidth=60,
+    #                                 lineColor=[1,1,1],
+    #                                 fillColor=None,
+    #                                 )
+    cfg['hw']['white_frame'] = visual.Rect(win=cfg['hw']['win'],
+                                           width=24,
+                                           height=15,
+                                           units='deg',
+                                           lineColor=None,
+                                           lineWidth=0,
+                                           fillColor=[1,1,1])
+    cfg['hw']['gray_frame'] =  visual.Rect(win=cfg['hw']['win'],
+                                           width=23,
+                                           height=14,
+                                           units='deg',
+                                           lineColor=None,
+                                           lineWidth=0,
+                                           fillColor=[0,0,0])
+
 
     cfg['hw']['bluedot_ref'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
-                                         size=[.5,.5],
+                                         size=[0.5,0.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[-1,-1,1],
                                          pos=[0,0.20])
     cfg['hw']['reddot_ref'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
-                                         size=[.5,.5],
+                                         size=[0.5,0.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[1,-1,-1],
@@ -358,14 +430,20 @@ def getTasks(cfg):
                          ]
         # shorter version:
         condictionary = [{'period':1/3, 'amplitude':12, 'stimtype':'dotframe'},
+                         {'period':1/3, 'amplitude':8, 'stimtype':'dotframe'},
                          {'period':1/3, 'amplitude':4., 'stimtype':'dotframe'},
                          {'period':1.0, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1.0, 'amplitude':4., 'stimtype':'dotframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotframe'},
                          {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/3, 'amplitude':8, 'stimtype':'dotbackground'},
                          {'period':1/3, 'amplitude':4., 'stimtype':'dotbackground'},
                          {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1.0, 'amplitude':4., 'stimtype':'dotbackground'},
-                        ]
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/3, 'amplitude':4., 'stimtype':'classicframe'},
+                         {'period':1.0, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'classicframe'},
+                         ]
 
         cfg['conditions'] = condictionary
 

@@ -29,11 +29,52 @@ def run_exp(expno=1, setup='laptop'):
 
     cfg = runTasks(cfg)
 
+    cfg = exportData(cfg)
+
     # save cfg, except for hardware related stuff (window object and stimuli pointing to it)
     saveCfg(cfg)
 
     # shut down the window object
     cleanExit(cfg)
+
+
+def exportData(cfg):
+
+    responses = cfg['responses']
+
+    # collect names of data:
+    columnnames = []
+    for response in responses:
+        rks = list(response.keys())
+        addthese = np.nonzero([not(rk in columnnames) for rk in rks])[0]
+        # [x+1 if x >= 45 else x+5 for x in l]
+        [columnnames.append(rks[idx]) for idx in range(len(addthese))]
+
+    # make dict with columnnames as keys that are all empty lists:
+    respdict = dict.fromkeys(columnnames)
+    columnnames = list(respdict)
+    for rk in respdict.keys():
+        respdict[rk] = []
+
+    #respdict = {}
+    #for colname in columnnames:
+    #    respdict[colname] = []
+
+    # go through responses and collect all data into the dictionary:
+    for response in responses:
+        for colname in columnnames:
+            print(colname)
+            if colname in list(response.keys()):
+                respdict[colname] += [response[colname]]
+            else:
+                respdict[colname] += ['']
+
+    #for rk in respdict.keys():
+    #    print([rk, len(respdict[rk])])
+
+    pd.DataFrame(respdict).to_csv('%sresponses.csv'%(cfg['datadir']), index=False)
+
+    return(cfg)
 
 def doDotTrial(cfg):
 
@@ -44,12 +85,23 @@ def doDotTrial(cfg):
 
     # straight up copies from the PsychoJS version:
     period = trialdict['period']
-    frequency = 1/copy.deepcopy(trialdict['period'])
+    #frequency = 1/copy.deepcopy(trialdict['period'])
     distance = trialdict['amplitude']
 
+    if trialdict['stimtype'] in ['barframe']:
+        cfg['hw']['white_frame'].height = trialdict['barheight']
+        cfg['hw']['gray_frame'].height = 16
+
+    if 'framelag' in trialdict.keys():
+        framelag = trialdict['framelag']
+    else:
+        framelag = 0
+        trialdict['framelag'] = 0
+
     # change frequency and distance for static periods at the extremes:
-    p = period + (4/30)
-    d = distance + (distance/((p/2)*15))
+    p = period + (4/30) # two dots = 2 times 2 frames at 30 Hz extra
+    #
+    d = distance + (distance/((period/2)*15))
     #p = 1/f
 
     # DO THE TRIAL HERE
@@ -78,12 +130,11 @@ def doDotTrial(cfg):
 
     while waiting_for_response:
 
+        # blank screen of random length between 1/3 and 2.3 seconds
         while (time.time() - trial_start_time) < blank:
             event.clearEvents(eventType='mouse')
             event.clearEvents(eventType='keyboard')
             cfg['hw']['win'].flip()
-
-
 
         # on every frame:
         this_frame_time = time.time() - trial_start_time
@@ -96,33 +147,36 @@ def doDotTrial(cfg):
 
         # move the frame:
 
-        offsetX = abs( (t % p) - (p/2) ) * (2/p) - 0.5
+        # sawtooth, scaled from -0.5 to 0.5
+        offsetX = abs( ( (t % p) - (p/2) ) * (2/p) ) - 0.5
         offsetX = offsetX * d
 
 
         flash_red  = False
         flash_blue = False
+        flash_frame = False
 
-        if ( ((t + (1/30)) % p) < (2/30)):
+        # flash any dots?
+        if ( ((t + (1/30) + (framelag/30)) % p) < (2.5/30)):
             flash_red = True
-            if (abs(offsetX) > (distance/2)):
-                offsetX = np.sign(offsetX) * (distance/2)
-
-        if ( ((t + (1/30) + (p/2)) % p) < (2/30) ):
+        if ( ((t + (1/30) + (p/2) + (framelag/30)) % p) < (2.5/30) ):
             flash_blue = True
-            if (abs(offsetX) > (distance/2)):
-                offsetX = np.sign(offsetX) * (distance/2)
 
+        # flash frame for apparent motion frame:
+        if ( ((t + (1/30)) % (p/2)) < (2.5/30)):
+            flash_frame = True
+
+        # correct frame position:
+        if (abs(offsetX) >= (distance/2)):
+            offsetX = np.sign(offsetX) * (distance/2)
+        else:
+            flash_frame = False
+
+        # flip offset according to invert percepts:
         offsetX = offsetX * xfactor
 
-#        minOffset = min(minOffset, offsetX)
-#        maxOffset = max(maxOffset, offsetX)
-        # cfg['hw']['dotfield'] is a dict with 4 entries:
-        # - 'dotsarray': am ElementArrayStim with N Rect objects
-        # - 'maxdotlife': a float
-        # - 'dotlifetimes': a list of N floats
-        # - 'dotpos': a Nx2 array with x,y coordinates
-        if trialdict['stimtype'] in ['dotframe','dotbackground']:
+        # for all the conditions with dots, handle the dots:
+        if trialdict['stimtype'] in ['dotmovingframe','dotmotionframe','dotbackground']:
 
             cfg['hw']['dotfield']['dotlifetimes'] += frame_time_elapsed
             idx = np.nonzero(cfg['hw']['dotfield']['dotlifetimes'] > cfg['hw']['dotfield']['maxdotlife'])[0]
@@ -131,43 +185,43 @@ def doDotTrial(cfg):
             cfg['hw']['dotfield']['xys'][idx,0] = np.random.random(size=len(idx)) - 0.5
 
             xys = copy.deepcopy(cfg['hw']['dotfield']['xys'])
-            xys[:,0] = xys[:,0] * (24 + cfg['maxamplitude'] - cfg['hw']['dotfield']['dotsize'])
+            xys[:,0] = xys[:,0] * (60 + cfg['maxamplitude'] - cfg['hw']['dotfield']['dotsize'])
             xys[:,1] = xys[:,1] * (15 - cfg['hw']['dotfield']['dotsize'])
 
             opacities[:] = 1
-            if (trialdict['stimtype'] == 'dotframe'):
-                opacities[np.nonzero(abs(xys[:,0]) > (12 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
+            if (trialdict['stimtype'] == 'dotmovingframe'):
+                opacities[np.nonzero(abs(xys[:,0]) > (7.5 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
             xys[:,0] += offsetX
-            if (trialdict['stimtype'] == 'dotbackground'):
-                opacities[np.nonzero(abs(xys[:,0]) > (12 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
+            if (trialdict['stimtype'] == 'dotmotionframe'):
+                opacities[np.nonzero(abs(xys[:,0]) > (7.5 - (cfg['hw']['dotfield']['dotsize']/2)))[0]] = 0
             xys[:,0] = xys[:,0] - cfg['stim_offsets'][0]
             xys[:,1] = xys[:,1] - cfg['stim_offsets'][1]
             cfg['hw']['dotfield']['dotsarray'].setXYs(xys)
             cfg['hw']['dotfield']['dotsarray'].opacities = opacities
             cfg['hw']['dotfield']['dotsarray'].draw()
 
-        if trialdict['stimtype'] in ['classicframe']:
+        # show frame for the classic and bar frames:
+        if trialdict['stimtype'] in ['classicframe', 'barframe']:
             frame_pos = [offsetX-cfg['stim_offsets'][0], -cfg['stim_offsets'][1]]
             cfg['hw']['white_frame'].pos = frame_pos
             cfg['hw']['white_frame'].draw()
             cfg['hw']['gray_frame'].pos = frame_pos
             cfg['hw']['gray_frame'].draw()
 
+        # flash frame for apparent motion frame:
+        if (trialdict['stimtype'] == 'apparentframe') and flash_frame:
+            frame_pos = [offsetX-cfg['stim_offsets'][0], -cfg['stim_offsets'][1]]
+            cfg['hw']['white_frame'].pos = frame_pos
+            cfg['hw']['white_frame'].draw()
+            cfg['hw']['gray_frame'].pos = frame_pos
+            cfg['hw']['gray_frame'].draw()
 
+        # flash the dots, if necessary:
         if flash_red:
             cfg['hw']['reddot'].draw()
         if flash_blue:
             cfg['hw']['bluedot'].draw()
 
-
-        cfg['hw']['win'].flip()
-
-        previous_frame_time = this_frame_time
-
-        frame_times += [this_frame_time]
-        frame_pos   += [offsetX]
-        blue_on     += [flash_blue]
-        red_on      += [flash_red]
 
         # in DEGREES:
         mousepos = cfg['hw']['mouse'].getPos()
@@ -179,37 +233,36 @@ def doDotTrial(cfg):
         cfg['hw']['bluedot_ref'].draw()
         cfg['hw']['reddot_ref'].draw()
 
-        keys = event.getKeys(keyList=['space'])
+        cfg['hw']['win'].flip()
+
+        previous_frame_time = this_frame_time
+
+        frame_times += [this_frame_time]
+        frame_pos   += [offsetX]
+        blue_on     += [flash_blue]
+        red_on      += [flash_red]
+
+        # key responses:
+        keys = event.getKeys(keyList=['space','escape'])
         if len(keys):
-            waiting_for_response = False
+            if 'space' in keys:
+                waiting_for_response = False
+                reaction_time = this_frame_time
+            if 'escape' in keys:
+                cleanExit(cfg)
 
-    # save a data frame as csv?
-    #stimulus_data = pd.DataFrame({'time':frame_times,
-    #                              'frameX':frame_pos,
-    #                              'red_flashed':red_on,
-    #                              'blue_flashed':blue_on})
-    #stimulus_data.to_csv('data/exp_1/%0.1fs_%0.1fdeg.csv'%(period,distance), index=False)
+    response                = trialdict
+    response['xfactor']     = xfactor
+    response['RT']          = reaction_time
+    response['percept_abs'] = 2*percept
+    response['percept_rel'] = percept/2
 
-    #for (var idx=0; idx < ndots; idx++) {
-    #    dots_lifetime[idx] = (dots_lifetime[idx] + frame_time_elapsed)
-    #    if (dots_lifetime[idx] > max_lifetime) {
-    #        dots_lifetime[idx] = dots_lifetime[idx] - max_lifetime
-    #        dots_pos[idx][0] = randomX(wrap_margins)
-    #    }
-    #    // dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
-    #    // wrap around margins:
-    #    if ( (dots_coords[idx][0] + offsetX) < margins[0]) {
-    #        // left of left margin, increase by area width, right?
-    #        dots[idx].setPos([dots_coords[idx][0]+offsetX+margin_diff,Ypos[idx]], false);
-    #    } else if ( (dots_coords[idx][0] + offsetX) > margins[1] ) {
-    #        // right of right margin, decrease by area width, right?
-    #        dots[idx].setPos([dots_coords[idx][0]+offsetX-margin_diff,Ypos[idx]], false);
-    #    } else {
-    #        dots[idx].setPos([dots_coords[idx][0]+offsetX,Ypos[idx]], false);
-    #    }
-    #}
+    cfg['responses'] += [response]
 
-    #print([minOffset, maxOffset])
+    cfg['hw']['white_frame'].height=15
+    cfg['hw']['gray_frame'].height=14
+
+    cfg['hw']['win'].flip()
 
     return(cfg)
 
@@ -219,6 +272,8 @@ def runTasks(cfg):
 
     cfg = getMaxAmplitude(cfg)
 
+    cfg['responses'] = []
+
     if not('currentblock' in cfg):
         cfg['currentblock'] = 0
     if not('currenttrial' in cfg):
@@ -227,24 +282,23 @@ def runTasks(cfg):
     while cfg['currentblock'] < len(cfg['blocks']):
 
         # do the trials:
+        cfg['currenttrial'] = 0
 
         while cfg['currenttrial'] < len(cfg['blocks'][cfg['currentblock']]['trialtypes']):
 
             trialtype = cfg['blocks'][cfg['currentblock']]['trialtypes'][cfg['currenttrial']]
             trialdict = cfg['conditions'][trialtype]
 
-            if trialdict['stimtype'] in ['dotframe','dotbackground']:
+            if trialdict['stimtype'] in ['dotmotionframe','dotmovingframe','dotbackground','classicframe', 'barframe','apparentframe']:
 
                 cfg = doDotTrial(cfg)
-
-            if trialdict['stimtype'] in ['classicframe']:
-
-                cfg = doDotTrial(cfg)
+                saveCfg(cfg)
 
             cfg['currenttrial'] += 1
 
         cfg['currentblock'] += 1
-        cfg['currenttrial'] = 0
+
+
 
     return(cfg)
 
@@ -296,7 +350,7 @@ def getStimuli(cfg, setup='tablet'):
     res = cfg['hw']['win'].size
     cfg['relResolution'] = [x / res[1] for x in res]
 
-    cfg['stim_offsets'] = [6,2]
+    cfg['stim_offsets'] = [4,2]
 
     cfg['hw']['bluedot'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
@@ -314,16 +368,16 @@ def getStimuli(cfg, setup='tablet'):
                                          pos=[0-cfg['stim_offsets'][0],-6-cfg['stim_offsets'][1]])
 
 
-    ndots = 600
-    maxdotlife = 1/5
+    ndots = 300
+    maxdotlife = 1/2
     ypos = np.linspace(-0.5,0.5,ndots)
     random.shuffle(ypos)
     xys = [[random.random()-0.5,y] for y in ypos]
     #colors = [[-.25,-.25,-.25],[.25,.25,.25]] * 400
-    colors = [[-.3,-.3,-.3],[.3,.3,.3]] * 300
+    colors = [[-.35,-.35,-.35],[.35,.35,.35]] * 150
     dotlifetimes = [random.random() * maxdotlife for x in range(ndots)]
     dotMask = np.ones([32,32])
-    dotsize = 1
+    dotsize = 2
 
     dotsarray = visual.ElementArrayStim(win = cfg['hw']['win'],
                                         units='deg',
@@ -355,14 +409,14 @@ def getStimuli(cfg, setup='tablet'):
     #                                 fillColor=None,
     #                                 )
     cfg['hw']['white_frame'] = visual.Rect(win=cfg['hw']['win'],
-                                           width=24,
+                                           width=15,
                                            height=15,
                                            units='deg',
                                            lineColor=None,
                                            lineWidth=0,
                                            fillColor=[1,1,1])
     cfg['hw']['gray_frame'] =  visual.Rect(win=cfg['hw']['win'],
-                                           width=23,
+                                           width=14,
                                            height=14,
                                            units='deg',
                                            lineColor=None,
@@ -407,17 +461,7 @@ def getTasks(cfg):
         # 1.0 - 0.3333 seconds, 12 deg motion:
         # durations: 1.000, 0.6666, 0.5000, 0.4000 and 0.3333
 
-        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':2/3, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/2, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':2/5, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':4, 'stimtype':'dotframe'},
-                         {'period':1.3, 'amplitude':6, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':8, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':10, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
+        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
                          {'period':2/3, 'amplitude':12, 'stimtype':'dotbackground'},
                          {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
                          {'period':2/5, 'amplitude':12, 'stimtype':'dotbackground'},
@@ -428,22 +472,62 @@ def getTasks(cfg):
                          {'period':1/3, 'amplitude':10, 'stimtype':'dotbackground'},
                          {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
                          ]
-        # shorter version:
-        condictionary = [{'period':1/3, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':8, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':4., 'stimtype':'dotframe'},
-                         {'period':1.0, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/2, 'amplitude':12, 'stimtype':'dotframe'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':8, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':4., 'stimtype':'dotbackground'},
+        # shorter durations:
+        # period: 1.0, 1/2, 1/3, 1/4, 1/5
+        # amplit: 2.4, 4.8, 7.2, 9.6, 12
+        # (speeds: 12, 24, 36, 48, 60 deg/s)
+        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/4, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':12., 'stimtype':'dotmovingframe'},
+
+                         {'period':1.0, 'amplitude':12, 'stimtype':'dotmotionframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotmotionframe'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'dotmotionframe'},
+                         {'period':1/4, 'amplitude':12, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotmotionframe'},
+                         {'period':1/5, 'amplitude':12., 'stimtype':'dotmotionframe'},
+
                          {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
                          {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'classicframe'},
-                         {'period':1/3, 'amplitude':4., 'stimtype':'classicframe'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/4, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':12., 'stimtype':'dotbackground'},
+
                          {'period':1.0, 'amplitude':12, 'stimtype':'classicframe'},
-                         {'period':1/2, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe'},
                          ]
+
+        condictionary = [{'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':0.9},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':1.8},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':3.6},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':7.2},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':15},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag':-6},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag':-4},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag':-2},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag': 2},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag': 4},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag': 6},
+                        ]
 
         cfg['conditions'] = condictionary
 

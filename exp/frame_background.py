@@ -63,7 +63,6 @@ def exportData(cfg):
     # go through responses and collect all data into the dictionary:
     for response in responses:
         for colname in columnnames:
-            print(colname)
             if colname in list(response.keys()):
                 respdict[colname] += [response[colname]]
             else:
@@ -74,12 +73,19 @@ def exportData(cfg):
 
     pd.DataFrame(respdict).to_csv('%sresponses.csv'%(cfg['datadir']), index=False)
 
+    print('data exported')
+
     return(cfg)
 
 def doDotTrial(cfg):
 
     trialtype = cfg['blocks'][cfg['currentblock']]['trialtypes'][cfg['currenttrial']]
     trialdict = cfg['conditions'][trialtype]
+
+    if 'record_timing' in trialdict.keys():
+        record_timing = trialdict['record_timing']
+    else:
+        record_timing = False
 
     opacities = np.array([1]*len(cfg['hw']['dotfield']['dotlifetimes']))
 
@@ -99,10 +105,30 @@ def doDotTrial(cfg):
         trialdict['framelag'] = 0
 
     # change frequency and distance for static periods at the extremes:
-    p = period + (4/30) # two dots = 2 times 2 frames at 30 Hz extra
-    #
-    d = distance + (distance/((period/2)*15))
+    if (0.35 - period) > 0:
+        # make sure there is a 350 ms inter-flash interval
+        extra_frames = int( np.ceil( (0.35 - period) / (1/60) ) ) + 5
+        #p = period + (extra_frames/15)
+        # this works for 200 ms durations... but why?
+        #d = distance + (distance/((p/(extra_frames+3))*15))
+        print('extra frames: %d'%extra_frames)
+    else:
+        print('standard extra frames')
+        extra_frames = 5
+        #p = period + (extra_frames/15) # two dots = 2 times 2 frames at 30 Hz extra
+        #d = distance + (distance/((p/(extra_frames+3))*15))
+
+    p = period + (extra_frames/60)
+    d = (distance/period) * p
+
+    print('period: %0.3f, p: %0.3f'%(period,p))
+    print('distance: %0.3f, d: %0.3f'%(distance,d))
+    print('speed: %0.3f, v: %0.3f'%(distance/period,d/p))
+
+
     #p = 1/f
+    #print('p: %0.5f'%p)
+    #print('d: %0.5f'%d)
 
     # DO THE TRIAL HERE
     trial_start_time = time.time()
@@ -113,7 +139,7 @@ def doDotTrial(cfg):
     # WHILE NO RESPONSE
 
     frame_times = []
-    frame_pos   = []
+    frame_pos_X = []
     blue_on     = []
     red_on      = []
 
@@ -143,27 +169,23 @@ def doDotTrial(cfg):
 
         # shorter variable for equations:
         t = this_frame_time
-        #print(t)
-
-        # move the frame:
 
         # sawtooth, scaled from -0.5 to 0.5
-        offsetX = abs( ( (t % p) - (p/2) ) * (2/p) ) - 0.5
+        offsetX = abs( ( ((t/2) % p) - (p/2) ) * (2/p) ) - 0.5
         offsetX = offsetX * d
-
 
         flash_red  = False
         flash_blue = False
         flash_frame = False
 
         # flash any dots?
-        if ( ((t + (1/30) + (framelag/30)) % p) < (2.5/30)):
+        if ( ((t + (1/30) + (framelag/30)) % (2*p)) < (1.75/30)):
             flash_red = True
-        if ( ((t + (1/30) + (p/2) + (framelag/30)) % p) < (2.5/30) ):
+        if ( ((t + (1/30) + (p/1) + (framelag/30)) % (2*p)) < (1.75/30) ):
             flash_blue = True
 
         # flash frame for apparent motion frame:
-        if ( ((t + (1/30)) % (p/2)) < (2.5/30)):
+        if ( ((t + (1/30)) % (p/1)) < (2/30)):
             flash_frame = True
 
         # correct frame position:
@@ -238,7 +260,7 @@ def doDotTrial(cfg):
         previous_frame_time = this_frame_time
 
         frame_times += [this_frame_time]
-        frame_pos   += [offsetX]
+        frame_pos_X += [offsetX]
         blue_on     += [flash_blue]
         red_on      += [flash_red]
 
@@ -247,17 +269,27 @@ def doDotTrial(cfg):
         if len(keys):
             if 'space' in keys:
                 waiting_for_response = False
-                reaction_time = this_frame_time
+                reaction_time = this_frame_time - blank
             if 'escape' in keys:
                 cleanExit(cfg)
 
-    response                = trialdict
-    response['xfactor']     = xfactor
-    response['RT']          = reaction_time
-    response['percept_abs'] = 2*percept
-    response['percept_rel'] = percept/2
+        if record_timing and ((this_frame_time - blank) >= 3.0):
+            waiting_for_response = False
 
-    cfg['responses'] += [response]
+
+    if record_timing:
+        pd.DataFrame({'time':frame_times,
+                      'frameX':frame_pos_X,
+                      'blue_flashed':blue_on,
+                      'red_flashed':red_on}).to_csv('timing_data/%0.3fd_%0.3fs.csv'%(distance, period), index=False)
+    else:
+        response                = trialdict
+        response['xfactor']     = xfactor
+        response['RT']          = reaction_time
+        response['percept_abs'] = 2*percept
+        response['percept_rel'] = percept/2
+
+        cfg['responses'] += [response]
 
     cfg['hw']['white_frame'].height=15
     cfg['hw']['gray_frame'].height=14
@@ -266,6 +298,26 @@ def doDotTrial(cfg):
 
     return(cfg)
 
+
+def showInstruction(cfg):
+
+    cfg['hw']['text'].text = cfg['blocks'][cfg['currentblock']]['instruction']
+
+    waiting_for_response = True
+
+    while waiting_for_response:
+
+        cfg['hw']['text'].draw()
+        cfg['hw']['win'].flip()
+
+        keys = event.getKeys(keyList=['enter', 'return', 'escape'])
+        if len(keys):
+            if 'enter' in keys:
+                waiting_for_response = False
+            if 'return' in keys:
+                waiting_for_response = False
+            if 'escape' in keys:
+                cleanExit(cfg)
 
 
 def runTasks(cfg):
@@ -283,6 +335,8 @@ def runTasks(cfg):
 
         # do the trials:
         cfg['currenttrial'] = 0
+
+        showInstruction(cfg)
 
         while cfg['currenttrial'] < len(cfg['blocks'][cfg['currentblock']]['trialtypes']):
 
@@ -352,21 +406,23 @@ def getStimuli(cfg, setup='tablet'):
 
     cfg['stim_offsets'] = [4,2]
 
+    #dot_offset = 6
+    dot_offset = np.tan(np.pi/6)*6
     cfg['hw']['bluedot'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
                                          size=[1.5,1.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[-1,-1,1],
-                                         pos=[0-cfg['stim_offsets'][0],6-cfg['stim_offsets'][1]])
+                                         pos=[0-cfg['stim_offsets'][0],dot_offset-cfg['stim_offsets'][1]])
     cfg['hw']['reddot'] = visual.Circle(win=cfg['hw']['win'],
                                          units='deg',
                                          size=[1.5,1.5],
                                          edges=180,
                                          lineWidth=0,
                                          fillColor=[1,-1,-1],
-                                         pos=[0-cfg['stim_offsets'][0],-6-cfg['stim_offsets'][1]])
-
+                                         pos=[0-cfg['stim_offsets'][0],-dot_offset-cfg['stim_offsets'][1]])
+    #np.tan(np.pi/6)*6
 
     ndots = 300
     maxdotlife = 1/2
@@ -399,15 +455,6 @@ def getStimuli(cfg, setup='tablet'):
 
     cfg['hw']['dotfield'] = dotfield
 
-    print(tools.monitorunittools.deg2pix(0.75, monitor=mymonitor))
-    #cfg['hw']['frame'] = visual.Rect(win=cfg['hw']['win'],
-    #                                 width=24,
-    #                                 height=15,
-    #                                 units='deg',
-    #                                 lineWidth=60,
-    #                                 lineColor=[1,1,1],
-    #                                 fillColor=None,
-    #                                 )
     cfg['hw']['white_frame'] = visual.Rect(win=cfg['hw']['win'],
                                            width=15,
                                            height=15,
@@ -443,6 +490,10 @@ def getStimuli(cfg, setup='tablet'):
     cfg['hw']['mouse'] = event.Mouse(visible=False, newPos=None, win=cfg['hw']['win'])
     # keyboard is not an object, already accessible through psychopy.event
 
+    cfg['hw']['text'] = visual.TextStim(win=cfg['hw']['win'],
+                                        text='Hello!'
+                                        )
+
     return(cfg)
 
 
@@ -460,18 +511,17 @@ def getTasks(cfg):
 
         # 1.0 - 0.3333 seconds, 12 deg motion:
         # durations: 1.000, 0.6666, 0.5000, 0.4000 and 0.3333
-
-        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':2/3, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':2/5, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':4, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':6, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':8, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':10, 'stimtype':'dotbackground'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
-                         ]
+        #condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 {'period':2/3, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 {'period':2/5, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':4, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':6, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':8, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':10, 'stimtype':'dotbackground'},
+        #                 {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
+        #                 ]
         # shorter durations:
         # period: 1.0, 1/2, 1/3, 1/4, 1/5
         # amplit: 2.4, 4.8, 7.2, 9.6, 12
@@ -486,17 +536,6 @@ def getTasks(cfg):
                          {'period':1/5, 'amplitude':7.2, 'stimtype':'dotmovingframe'},
                          {'period':1/5, 'amplitude':9.6, 'stimtype':'dotmovingframe'},
                          {'period':1/5, 'amplitude':12., 'stimtype':'dotmovingframe'},
-
-                         {'period':1.0, 'amplitude':12, 'stimtype':'dotmotionframe'},
-                         {'period':1/2, 'amplitude':12, 'stimtype':'dotmotionframe'},
-                         {'period':1/3, 'amplitude':12, 'stimtype':'dotmotionframe'},
-                         {'period':1/4, 'amplitude':12, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':12, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotmotionframe'},
-                         {'period':1/5, 'amplitude':12., 'stimtype':'dotmotionframe'},
 
                          {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
                          {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
@@ -514,6 +553,11 @@ def getTasks(cfg):
                          {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe'},
                          ]
 
+        nblocks = 1
+        nrepetitions = 1
+
+    if cfg['expno']==2:
+
         condictionary = [{'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':0.9},
                          {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':1.8},
                          {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':3.6},
@@ -528,25 +572,40 @@ def getTasks(cfg):
                          {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag': 4},
                          {'period':1/2, 'amplitude':12, 'stimtype':'apparentframe', 'framelag': 6},
                         ]
+        nblocks = 1
+        nrepetitions = 1
 
-        cfg['conditions'] = condictionary
+    if cfg['expno']==3:
 
-        cfg = getMaxAmplitude(cfg)
+        condictionary = [
+                         {'period':1.0, 'amplitude':12, 'stimtype':'classicframe', 'record_timing':True},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'classicframe', 'record_timing':True},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe', 'record_timing':True},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'classicframe', 'record_timing':True},
+                         ]
 
-        blocks = []
-        for block in range(1):
+        nblocks = 1
+        nrepetitions = 1
 
-            blockconditions = []
 
-            for repeat in range(1):
-                trialtypes = list(range(len(condictionary)))
-                random.shuffle(trialtypes)
-                blockconditions += trialtypes
+    cfg['conditions'] = condictionary
 
-            blocks += [{'trialtypes':blockconditions,
-                        'instruction':'do the trials?'}]
+    cfg = getMaxAmplitude(cfg)
 
-        cfg['blocks'] = blocks
+    blocks = []
+    for block in range(nblocks):
+
+        blockconditions = []
+
+        for repeat in range(nrepetitions):
+            trialtypes = list(range(len(condictionary)))
+            random.shuffle(trialtypes)
+            blockconditions += trialtypes
+
+        blocks += [{'trialtypes':blockconditions,
+                    'instruction':'get ready for block %d of %d\npress enter to start'%(block+1,nblocks)}]
+
+    cfg['blocks'] = blocks
 
     return(cfg)
 
@@ -625,7 +684,7 @@ def cleanExit(cfg):
     saveCfg(cfg)
 
     # still need to store data...
-    print('no data stored on call to exit function...')
+    print('no data exported on call to exit function...')
 
     cfg['hw']['win'].close()
 

@@ -114,9 +114,9 @@ def doDotTrial(cfg):
     p = period + (extra_frames/60)
     d = (distance/period) * p
 
-    print('period: %0.3f, p: %0.3f'%(period,p))
-    print('distance: %0.3f, d: %0.3f'%(distance,d))
-    print('speed: %0.3f, v: %0.3f'%(distance/period,d/p))
+    #print('period: %0.3f, p: %0.3f'%(period,p))
+    #print('distance: %0.3f, d: %0.3f'%(distance,d))
+    #print('speed: %0.3f, v: %0.3f'%(distance/period,d/p))
 
 
     #p = 1/f
@@ -498,7 +498,6 @@ def saveCfg(cfg):
     with open('%scfg.json'%(cfg['datadir']), 'w') as fp:
         json.dump(scfg, fp,  indent=4)
 
-    print('cfg object stored as json')
 
 def getTasks(cfg):
 
@@ -727,6 +726,8 @@ def cleanExit(cfg):
     cfg['expfinish'] = time.time()
 
     saveCfg(cfg)
+
+    print('cfg stored as json')
 
     cfg['hw']['win'].close()
 

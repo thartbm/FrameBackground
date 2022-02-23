@@ -107,16 +107,9 @@ def doDotTrial(cfg):
     # change frequency and distance for static periods at the extremes:
     if (0.35 - period) > 0:
         # make sure there is a 350 ms inter-flash interval
-        extra_frames = int( np.ceil( (0.35 - period) / (1/60) ) ) + 5
-        #p = period + (extra_frames/15)
-        # this works for 200 ms durations... but why?
-        #d = distance + (distance/((p/(extra_frames+3))*15))
-        print('extra frames: %d'%extra_frames)
+        extra_frames = int( np.ceil( (0.35 - period) / (1/60) ) * 2 )
     else:
-        print('standard extra frames')
-        extra_frames = 5
-        #p = period + (extra_frames/15) # two dots = 2 times 2 frames at 30 Hz extra
-        #d = distance + (distance/((p/(extra_frames+3))*15))
+        extra_frames = 9
 
     p = period + (extra_frames/60)
     d = (distance/period) * p
@@ -250,8 +243,8 @@ def doDotTrial(cfg):
         percept = (mousepos[0] + mouse_offset) / 4
 
         # blue is on top:
-        cfg['hw']['bluedot_ref'].pos = [percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+10]
-        cfg['hw']['reddot_ref'].pos = [-percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+6]
+        cfg['hw']['bluedot_ref'].pos = [percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+9.5]
+        cfg['hw']['reddot_ref'].pos = [-percept+(2.5*cfg['stim_offsets'][0]),cfg['stim_offsets'][1]+6.5]
         cfg['hw']['bluedot_ref'].draw()
         cfg['hw']['reddot_ref'].draw()
 
@@ -425,7 +418,7 @@ def getStimuli(cfg, setup='tablet'):
     #np.tan(np.pi/6)*6
 
     ndots = 300
-    maxdotlife = 1/2
+    maxdotlife = 1/5
     ypos = np.linspace(-0.5,0.5,ndots)
     random.shuffle(ypos)
     xys = [[random.random()-0.5,y] for y in ypos]
@@ -433,7 +426,7 @@ def getStimuli(cfg, setup='tablet'):
     colors = [[-.35,-.35,-.35],[.35,.35,.35]] * 150
     dotlifetimes = [random.random() * maxdotlife for x in range(ndots)]
     dotMask = np.ones([32,32])
-    dotsize = 2
+    dotsize = 1
 
     dotsarray = visual.ElementArrayStim(win = cfg['hw']['win'],
                                         units='deg',
@@ -505,6 +498,8 @@ def saveCfg(cfg):
     with open('%scfg.json'%(cfg['datadir']), 'w') as fp:
         json.dump(scfg, fp,  indent=4)
 
+    print('cfg object stored as json')
+
 def getTasks(cfg):
 
     if cfg['expno']==1:
@@ -553,10 +548,42 @@ def getTasks(cfg):
                          {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe'},
                          ]
 
-        nblocks = 1
+        nblocks = 5
         nrepetitions = 1
 
     if cfg['expno']==2:
+
+        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/4, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':12., 'stimtype':'dotmovingframe'},
+
+                         {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/2, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/3, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/4, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':4.8, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':7.2, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':9.6, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':12., 'stimtype':'dotbackground'},
+
+                         {'period':1.0, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe'},
+                         ]
+
+        nblocks = 5
+        nrepetitions = 2
+
+    if cfg['expno']==10:
 
         condictionary = [{'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':0.9},
                          {'period':1/2, 'amplitude':12, 'stimtype':'barframe', 'barheight':1.8},
@@ -582,6 +609,24 @@ def getTasks(cfg):
                          {'period':1/5, 'amplitude':12, 'stimtype':'classicframe', 'record_timing':True},
                          {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe', 'record_timing':True},
                          {'period':1/2, 'amplitude':12, 'stimtype':'classicframe', 'record_timing':True},
+                         ]
+
+        nblocks = 1
+        nrepetitions = 1
+
+    if cfg['expno']==4:
+
+        condictionary = [{'period':1.0, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotmovingframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotmovingframe'},
+
+                         {'period':1.0, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'dotbackground'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'dotbackground'},
+
+                         {'period':1.0, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':12, 'stimtype':'classicframe'},
+                         {'period':1/5, 'amplitude':2.4, 'stimtype':'classicframe'},
                          ]
 
         nblocks = 1
@@ -682,9 +727,6 @@ def cleanExit(cfg):
     cfg['expfinish'] = time.time()
 
     saveCfg(cfg)
-
-    # still need to store data...
-    print('no data exported on call to exit function...')
 
     cfg['hw']['win'].close()
 
